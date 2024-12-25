@@ -76,6 +76,23 @@ function Matieres() {
         matiere.name.toLowerCase().includes(search.toLowerCase())
     );
 
+    const handleDownloadCSV = () => {
+        const csvContent = [
+            ['ID', 'Matière'],
+            ...matieres.map((matiere) => [matiere.id, matiere.name]),
+        ]
+            .map((row) => row.join(','))
+            .join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'matieres.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <div>
             {/* Titre des matières */}
@@ -94,15 +111,23 @@ function Matieres() {
                 inputProps={{ style: { color: 'white' } }}
             />
 
-            {/* Bouton pour ajouter une matière */}
-            <Button
-                variant="contained"
-                color="primary"
-                onClick={() => setIsAddDialogOpen(true)}
-                style={{ marginBottom: '20px' }}
-            >
-                Ajouter une matière
-            </Button>
+            {/* Boutons pour ajouter et télécharger */}
+            <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+                <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => setIsAddDialogOpen(true)}
+                >
+                    Ajouter une matière
+                </Button>
+                <Button
+                    variant="contained"
+                    color="secondary"
+                    onClick={handleDownloadCSV}
+                >
+                    Télécharger CSV
+                </Button>
+            </div>
 
             {/* Table des matières */}
             <TableContainer component={Paper} style={{ backgroundColor: '#333' }}>
