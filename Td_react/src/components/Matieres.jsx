@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
     Table,
     TableBody,
@@ -17,17 +17,26 @@ import {
     DialogTitle,
 } from '@mui/material';
 import { Edit, Delete } from '@mui/icons-material';
-import data from '../data.json';
+import axios from 'axios';
 
 function Matieres() {
     const [search, setSearch] = useState('');
-    const [matieres, setMatieres] = useState(
-        data.map((item) => ({ id: Date.now() + Math.random(), name: item.course }))
-    );
+    const [matieres, setMatieres] = useState([]);
     const [editingId, setEditingId] = useState(null);
     const [editedMatiere, setEditedMatiere] = useState('');
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [newMatiere, setNewMatiere] = useState('');
+
+    useEffect(() => {
+        // Fetch courses from the API
+        axios.get('http://localhost:8010/api/courses')
+            .then((response) => {
+                setMatieres(response.data);
+            })
+            .catch((error) => {
+                console.error("There was an error fetching the courses!", error);
+            });
+    }, []);
 
     const handleSearchChange = (e) => {
         setSearch(e.target.value);
@@ -35,8 +44,8 @@ function Matieres() {
 
     const handleEditClick = (id) => {
         setEditingId(id);
-        const matiere = matieres.find((matiere) => matiere.id === id);
-        setEditedMatiere(matiere.name);
+        const matiere = matieres.find((matiere) => matiere._id === id);
+        setEditedMatiere(matiere?.course || ''); // Safeguard against undefined
     };
 
     const handleEditChange = (e) => {
@@ -44,17 +53,31 @@ function Matieres() {
     };
 
     const handleEditSave = () => {
-        setMatieres((prev) =>
-            prev.map((matiere) =>
-                matiere.id === editingId ? { ...matiere, name: editedMatiere } : matiere
-            )
-        );
-        setEditingId(null);
-        setEditedMatiere('');
+        // Update course via API
+        const updatedCourse = { course: editedMatiere, code: editedMatiere.replace(" ", "").toUpperCase().slice(0, 6) };
+        axios.put(`http://localhost:8010/api/courses/${editingId}`, updatedCourse)
+            .then(() => {
+                setMatieres((prev) =>
+                    prev.map((matiere) =>
+                        matiere._id === editingId ? { ...matiere, course: editedMatiere } : matiere
+                    )
+                );
+                setEditingId(null);
+                setEditedMatiere('');
+            })
+            .catch((error) => {
+                console.error("There was an error updating the course!", error);
+            });
     };
 
     const handleDeleteClick = (id) => {
-        setMatieres((prev) => prev.filter((matiere) => matiere.id !== id));
+        axios.delete(`http://localhost:8010/api/courses/${id}`)
+            .then(() => {
+                setMatieres((prev) => prev.filter((matiere) => matiere._id !== id));
+            })
+            .catch((error) => {
+                console.error("There was an error deleting the course!", error);
+            });
     };
 
     const handleAddChange = (e) => {
@@ -62,24 +85,31 @@ function Matieres() {
     };
 
     const handleAddMatiere = () => {
-        if (newMatiere.trim() !== '' && !matieres.some((m) => m.name === newMatiere.trim())) {
-            setMatieres((prev) => [
-                ...prev,
-                { id: Date.now() + Math.random(), name: newMatiere.trim() },
-            ]);
+        if (newMatiere.trim() !== '') {
+            const newCourse = { course: newMatiere.trim(), code: newMatiere.trim().replace(" ", "").toUpperCase().slice(0, 6) };
+            axios.post('http://localhost:8010/api/courses', newCourse)
+                .then(() => {
+                    setMatieres((prev) => [
+                        ...prev,
+                        { _id: Date.now(), course: newMatiere.trim() },
+                    ]);
+                    setNewMatiere('');
+                    setIsAddDialogOpen(false);
+                })
+                .catch((error) => {
+                    console.error("There was an error adding the course!", error);
+                });
         }
-        setNewMatiere('');
-        setIsAddDialogOpen(false);
     };
 
     const filteredMatieres = matieres.filter((matiere) =>
-        matiere.name.toLowerCase().includes(search.toLowerCase())
+        matiere?.course?.toLowerCase().includes(search.toLowerCase())
     );
 
     const handleDownloadCSV = () => {
         const csvContent = [
             ['ID', 'Matière'],
-            ...matieres.map((matiere) => [matiere.id, matiere.name]),
+            ...matieres.map((matiere) => [matiere._id, matiere.course]),
         ]
             .map((row) => row.join(','))
             .join('\n');
@@ -140,8 +170,8 @@ function Matieres() {
                     </TableHead>
                     <TableBody>
                         {filteredMatieres.map((matiere) => (
-                            <TableRow key={matiere.id}>
-                                {editingId === matiere.id ? (
+                            <TableRow key={matiere._id}>
+                                {editingId === matiere._id ? (
                                     <>
                                         <TableCell style={{ color: 'white' }}>
                                             <TextField
@@ -165,17 +195,17 @@ function Matieres() {
                                     </>
                                 ) : (
                                     <>
-                                        <TableCell style={{ color: 'white' }}>{matiere.name}</TableCell>
+                                        <TableCell style={{ color: 'white' }}>{matiere?.course}</TableCell>
                                         <TableCell>
                                             <IconButton
                                                 color="primary"
-                                                onClick={() => handleEditClick(matiere.id)}
+                                                onClick={() => handleEditClick(matiere._id)}
                                             >
                                                 <Edit />
                                             </IconButton>
                                             <IconButton
                                                 color="secondary"
-                                                onClick={() => handleDeleteClick(matiere.id)}
+                                                onClick={() => handleDeleteClick(matiere._id)}
                                             >
                                                 <Delete />
                                             </IconButton>
