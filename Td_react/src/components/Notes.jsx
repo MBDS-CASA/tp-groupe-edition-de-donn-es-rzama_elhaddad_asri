@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Table,
     TableBody,
@@ -14,21 +14,31 @@ import {
     DialogContent,
     DialogActions,
 } from '@mui/material';
-import data from '../data.json';
+import axios from 'axios';
 
 function Notes() {
     const [search, setSearch] = useState('');
-    const [notesData, setNotesData] = useState(data);
+    const [notesData, setNotesData] = useState([]);
     const [openDialog, setOpenDialog] = useState(false);
     const [currentNote, setCurrentNote] = useState(null);
+
+    // Récupérer les données au chargement du composant
+    useEffect(() => {
+        axios.get('http://localhost:8010/api/grades')
+            .then((response) => {
+                setNotesData(response.data);
+            })
+            .catch((error) => {
+                console.error("Il y a eu un problème avec la récupération des données : ", error);
+            });
+    }, []);
 
     const handleSearchChange = (e) => setSearch(e.target.value);
 
     const filteredData = notesData.filter((item) => {
-        const fullName = `${item.student.firstname} ${item.student.lastname}`.toLowerCase();
-        const course = item.course.toLowerCase();
+        const fullName = `${item.firstName} ${item.lastName}`.toLowerCase();
         const searchTerm = search.toLowerCase();
-        return fullName.includes(searchTerm) || course.includes(searchTerm);
+        return fullName.includes(searchTerm);
     });
 
     const handleOpenDialog = (note = null) => {
@@ -42,33 +52,54 @@ function Notes() {
     };
 
     const handleSaveNote = () => {
-        if (currentNote.unique_id) {
-            setNotesData((prevData) =>
-                prevData.map((note) =>
-                    note.unique_id === currentNote.unique_id ? currentNote : note
-                )
-            );
+        if (currentNote._id) {
+            // Mettre à jour une note existante
+            axios.put(`http://localhost:8010/api/grades/${currentNote._id}`, currentNote)
+                .then(() => {
+                    setNotesData((prevData) =>
+                        prevData.map((note) =>
+                            note._id === currentNote._id ? currentNote : note
+                        )
+                    );
+                    handleCloseDialog();
+                })
+                .catch((error) => {
+                    console.error("Erreur lors de la mise à jour de la note : ", error);
+                });
         } else {
-            setNotesData((prevData) => [
-                ...prevData,
-                { ...currentNote, unique_id: Date.now() },
-            ]);
+            // Ajouter une nouvelle note
+            axios.post('http://localhost:8010/api/grades', currentNote)
+                .then((response) => {
+                    setNotesData((prevData) => [
+                        ...prevData,
+                        response.data,
+                    ]);
+                    handleCloseDialog();
+                })
+                .catch((error) => {
+                    console.error("Erreur lors de l'ajout de la note : ", error);
+                });
         }
-        handleCloseDialog();
     };
 
     const handleDeleteNote = (id) => {
-        setNotesData((prevData) => prevData.filter((note) => note.unique_id !== id));
+        axios.delete(`http://localhost:8010/api/grades/${id}`)
+            .then(() => {
+                setNotesData((prevData) => prevData.filter((note) => note._id !== id));
+            })
+            .catch((error) => {
+                console.error("Erreur lors de la suppression de la note : ", error);
+            });
     };
 
     const handleDownloadCSV = () => {
         const csvRows = [
             ['ID', 'Cours', 'Prénom', 'Nom', 'Date', 'Note'],
             ...notesData.map((note) => [
-                note.unique_id,
+                note._id,
                 note.course,
-                note.student.firstname,
-                note.student.lastname,
+                note.firstName,
+                note.lastName,
                 note.date,
                 note.grade,
             ]),
@@ -108,11 +139,11 @@ function Notes() {
                     </TableHead>
                     <TableBody>
                         {filteredData.map((item) => (
-                            <TableRow key={item.unique_id}>
-                                <TableCell style={{ color: 'white' }}>{item.unique_id}</TableCell>
+                            <TableRow key={item._id}>
+                                <TableCell style={{ color: 'white' }}>{item._id}</TableCell>
                                 <TableCell style={{ color: 'white' }}>{item.course}</TableCell>
                                 <TableCell style={{ color: 'white' }}>
-                                    {`${item.student.firstname} ${item.student.lastname}`}
+                                    {`${item.firstName} ${item.lastName}`}
                                 </TableCell>
                                 <TableCell style={{ color: 'white' }}>{item.date}</TableCell>
                                 <TableCell style={{ color: 'white' }}>{item.grade}</TableCell>
@@ -127,7 +158,7 @@ function Notes() {
                                     <Button
                                         variant="contained"
                                         color="secondary"
-                                        onClick={() => handleDeleteNote(item.unique_id)}
+                                        onClick={() => handleDeleteNote(item._id)}
                                         style={{ marginLeft: '10px' }}
                                     >
                                         Supprimer
@@ -157,7 +188,7 @@ function Notes() {
             </div>
             <Dialog open={openDialog} onClose={handleCloseDialog}>
                 <DialogTitle>
-                    {currentNote?.unique_id ? 'Modifier' : 'Ajouter'} une note
+                    {currentNote?._id ? 'Modifier' : 'Ajouter'} une note
                 </DialogTitle>
                 <DialogContent>
                     <TextField
@@ -172,11 +203,11 @@ function Notes() {
                     <TextField
                         label="Prénom de l'étudiant"
                         fullWidth
-                        value={currentNote?.student?.firstname || ''}
+                        value={currentNote?.firstName || ''}
                         onChange={(e) =>
                             setCurrentNote({
                                 ...currentNote,
-                                student: { ...currentNote?.student, firstname: e.target.value },
+                                firstName: e.target.value,
                             })
                         }
                         style={{ marginBottom: '10px' }}
@@ -184,11 +215,11 @@ function Notes() {
                     <TextField
                         label="Nom de l'étudiant"
                         fullWidth
-                        value={currentNote?.student?.lastname || ''}
+                        value={currentNote?.lastName || ''}
                         onChange={(e) =>
                             setCurrentNote({
                                 ...currentNote,
-                                student: { ...currentNote?.student, lastname: e.target.value },
+                                lastName: e.target.value,
                             })
                         }
                         style={{ marginBottom: '10px' }}
