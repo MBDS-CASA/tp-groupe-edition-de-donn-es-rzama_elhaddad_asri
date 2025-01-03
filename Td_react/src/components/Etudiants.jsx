@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -16,35 +16,42 @@ import {
   DialogTitle,
 } from '@mui/material';
 import { Edit, Delete } from '@mui/icons-material';
-import data from '../data.json';
 
 function Etudiants() {
   const [search, setSearch] = useState('');
-  const [students, setStudents] = useState(data); // Données initiales
+  const [students, setStudents] = useState([]);
   const [editingStudentId, setEditingStudentId] = useState(null);
-  const [editedStudent, setEditedStudent] = useState({
-    firstname: '',
-    lastname: '',
-    course: '',
-  });
+  const [editedStudent, setEditedStudent] = useState({ firstname: '', lastname: '' });
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newStudent, setNewStudent] = useState({
-    firstname: '',
-    lastname: '',
-    course: '',
-  });
+  const [newStudent, setNewStudent] = useState({ firstname: '', lastname: '' });
+  const [loading, setLoading] = useState(false);  // For handling loading state
+  const [error, setError] = useState(null); // For handling errors
+
+  // Fetch students data when the component mounts
+  useEffect(() => {
+    setLoading(true);
+    fetch('http://localhost:8010/api/students')
+        .then((response) => response.json())
+        .then((data) => {
+          setStudents(data);
+          setLoading(false);
+        })
+        .catch((error) => {
+          setError('Error fetching students');
+          setLoading(false);
+        });
+  }, []);
 
   const handleSearchChange = (e) => {
     setSearch(e.target.value);
   };
 
   const handleEditClick = (id) => {
-    const studentToEdit = students.find((item) => item.student.id === id);
+    const studentToEdit = students.find((item) => item.id === id);
     setEditingStudentId(id);
     setEditedStudent({
-      firstname: studentToEdit.student.firstname,
-      lastname: studentToEdit.student.lastname,
-      course: studentToEdit.course,
+      firstname: studentToEdit.firstname,
+      lastname: studentToEdit.lastname,
     });
   };
 
@@ -54,27 +61,44 @@ function Etudiants() {
   };
 
   const handleEditSave = () => {
-    setStudents((prev) =>
-      prev.map((item) =>
-        item.student.id === editingStudentId
-          ? {
-              ...item,
-              student: {
-                ...item.student,
-                firstname: editedStudent.firstname,
-                lastname: editedStudent.lastname,
-              },
-              course: editedStudent.course,
-            }
-          : item
-      )
-    );
-    setEditingStudentId(null);
-    setEditedStudent({ firstname: '', lastname: '', course: '' });
+    setLoading(true);
+    fetch(`http://localhost:8010/api/students/${editingStudentId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(editedStudent),
+    })
+        .then((response) => response.json())
+        .then((updatedStudent) => {
+          setStudents((prev) =>
+              prev.map((student) =>
+                  student.id === updatedStudent.id ? updatedStudent : student
+              )
+          );
+          setEditingStudentId(null);
+          setEditedStudent({ firstname: '', lastname: '' });
+          setLoading(false);
+        })
+        .catch((error) => {
+          setError('Error updating student');
+          setLoading(false);
+        });
   };
 
   const handleDeleteClick = (id) => {
-    setStudents((prev) => prev.filter((item) => item.student.id !== id));
+    setLoading(true);
+    fetch(`http://localhost:8010/api/students/${id}`, {
+      method: 'DELETE',
+    })
+        .then(() => {
+          setStudents((prev) => prev.filter((student) => student.id !== id));
+          setLoading(false);
+        })
+        .catch((error) => {
+          setError('Error deleting student');
+          setLoading(false);
+        });
   };
 
   const handleAddChange = (e) => {
@@ -83,197 +107,146 @@ function Etudiants() {
   };
 
   const handleAddStudent = () => {
-    const nextId =
-      students.length > 0
-        ? Math.max(...students.map((item) => item.student.id)) + 1
-        : 1;
+    setLoading(true);
+    const newStudentData = { firstname: newStudent.firstname, lastname: newStudent.lastname };
 
-    const newEntry = {
-      student: {
-        id: nextId,
-        firstname: newStudent.firstname,
-        lastname: newStudent.lastname,
-      },
-      course: newStudent.course,
-    };
-
-    setStudents((prev) => [...prev, newEntry]);
-    setNewStudent({ firstname: '', lastname: '', course: '' });
-    setIsAddDialogOpen(false);
-  };
-
-  const handleDownloadCSV = () => {
-    const csvContent = [
-      ['ID Étudiant', 'Prénom', 'Nom', 'Matière'],
-      ...students.map((item) => [
-        item.student.id,
-        item.student.firstname,
-        item.student.lastname,
-        item.course,
-      ]),
-    ]
-      .map((row) => row.join(','))
-      .join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'etudiants.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    fetch('http://localhost:8010/api/students', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newStudentData),
+    })
+        .then((response) => response.json())
+        .then((addedStudent) => {
+          setStudents((prev) => [...prev, addedStudent]);
+          setNewStudent({ firstname: '', lastname: '' });
+          setIsAddDialogOpen(false);
+          setLoading(false);
+        })
+        .catch((error) => {
+          setError('Error adding student');
+          setLoading(false);
+        });
   };
 
   const filteredStudents = students.filter((item) => {
-    const fullName = `${item.student.firstname} ${item.student.lastname}`.toLowerCase();
-    const course = item.course.toLowerCase();
+    const fullName = `${item.firstname} ${item.lastname}`.toLowerCase();
     const searchTerm = search.toLowerCase();
-    return fullName.includes(searchTerm) || course.includes(searchTerm);
+    return fullName.includes(searchTerm);
   });
 
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (error) {
+    return <div>{error}</div>;
+  }
+
   return (
-    <div>
-      <TextField
-        label="Rechercher par prénom, nom ou matière"
-        variant="outlined"
-        fullWidth
-        onChange={handleSearchChange}
-        value={search}
-        style={{ marginBottom: '20px' }}
-        inputProps={{ style: { color: 'white' } }}
-      />
+      <div>
+        <TextField
+            label="Rechercher par prénom ou nom"
+            variant="outlined"
+            fullWidth
+            onChange={handleSearchChange}
+            value={search}
+            style={{ marginBottom: '20px' }}
+        />
 
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={() => setIsAddDialogOpen(true)}
-        >
-          Ajouter un étudiant
-        </Button>
-        <Button variant="contained" color="secondary" onClick={handleDownloadCSV}>
-          Télécharger CSV
-        </Button>
-      </div>
+        <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+          <Button variant="contained" color="primary" onClick={() => setIsAddDialogOpen(true)}>
+            Ajouter un étudiant
+          </Button>
+        </div>
 
-      <TableContainer component={Paper} style={{ backgroundColor: '#333' }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell style={{ color: 'white' }}>ID Étudiant</TableCell>
-              <TableCell style={{ color: 'white' }}>Prénom</TableCell>
-              <TableCell style={{ color: 'white' }}>Nom</TableCell>
-              <TableCell style={{ color: 'white' }}>Matière</TableCell>
-              <TableCell style={{ color: 'white' }}>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredStudents.map((item) => (
-              <TableRow key={item.student.id}>
-                {editingStudentId === item.student.id ? (
-                  <>
-                    <TableCell style={{ color: 'white' }}>{item.student.id}</TableCell>
-                    <TableCell style={{ color: 'white' }}>
-                      <TextField
-                        name="firstname"
-                        value={editedStudent.firstname}
-                        onChange={handleEditChange}
-                        variant="standard"
-                        style={{ color: 'white' }}
-                      />
-                    </TableCell>
-                    <TableCell style={{ color: 'white' }}>
-                      <TextField
-                        name="lastname"
-                        value={editedStudent.lastname}
-                        onChange={handleEditChange}
-                        variant="standard"
-                        style={{ color: 'white' }}
-                      />
-                    </TableCell>
-                    <TableCell style={{ color: 'white' }}>
-                      <TextField
-                        name="course"
-                        value={editedStudent.course}
-                        onChange={handleEditChange}
-                        variant="standard"
-                        style={{ color: 'white' }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button color="primary" onClick={handleEditSave}>
-                        Sauvegarder
-                      </Button>
-                      <Button color="secondary" onClick={() => setEditingStudentId(null)}>
-                        Annuler
-                      </Button>
-                    </TableCell>
-                  </>
-                ) : (
-                  <>
-                    <TableCell style={{ color: 'white' }}>{item.student.id}</TableCell>
-                    <TableCell style={{ color: 'white' }}>{item.student.firstname}</TableCell>
-                    <TableCell style={{ color: 'white' }}>{item.student.lastname}</TableCell>
-                    <TableCell style={{ color: 'white' }}>{item.course}</TableCell>
-                    <TableCell>
-                      <IconButton
-                        color="primary"
-                        onClick={() => handleEditClick(item.student.id)}
-                      >
-                        <Edit />
-                      </IconButton>
-                      <IconButton
-                        color="secondary"
-                        onClick={() => handleDeleteClick(item.student.id)}
-                      >
-                        <Delete />
-                      </IconButton>
-                    </TableCell>
-                  </>
-                )}
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>ID Étudiant</TableCell>
+                <TableCell>Prénom</TableCell>
+                <TableCell>Nom</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {filteredStudents.map((item) => (
+                  <TableRow key={item.id}>
+                    {editingStudentId === item.id ? (
+                        <>
+                          <TableCell>{item.id}</TableCell>
+                          <TableCell>
+                            <TextField
+                                name="firstname"
+                                value={editedStudent.firstname}
+                                onChange={handleEditChange}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                                name="lastname"
+                                value={editedStudent.lastname}
+                                onChange={handleEditChange}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button color="primary" onClick={handleEditSave}>
+                              Sauvegarder
+                            </Button>
+                            <Button color="secondary" onClick={() => setEditingStudentId(null)}>
+                              Annuler
+                            </Button>
+                          </TableCell>
+                        </>
+                    ) : (
+                        <>
+                          <TableCell>{item.id}</TableCell>
+                          <TableCell>{item.firstname}</TableCell>
+                          <TableCell>{item.lastname}</TableCell>
+                          <TableCell>
+                            <IconButton color="primary" onClick={() => handleEditClick(item.id)}>
+                              <Edit />
+                            </IconButton>
+                            <IconButton color="secondary" onClick={() => handleDeleteClick(item.id)}>
+                              <Delete />
+                            </IconButton>
+                          </TableCell>
+                        </>
+                    )}
+                  </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
 
-      <Dialog open={isAddDialogOpen} onClose={() => setIsAddDialogOpen(false)}>
-        <DialogTitle>Ajouter un étudiant</DialogTitle>
-        <DialogContent>
-          <TextField
-            name="firstname"
-            label="Prénom"
-            value={newStudent.firstname}
-            onChange={handleAddChange}
-            fullWidth
-            style={{ marginBottom: '10px' }}
-          />
-          <TextField
-            name="lastname"
-            label="Nom"
-            value={newStudent.lastname}
-            onChange={handleAddChange}
-            fullWidth
-            style={{ marginBottom: '10px' }}
-          />
-          <TextField
-            name="course"
-            label="Matière"
-            value={newStudent.course}
-            onChange={handleAddChange}
-            fullWidth
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleAddStudent} color="primary">
-            Ajouter
-          </Button>
-          <Button onClick={() => setIsAddDialogOpen(false)} color="secondary">
-            Annuler
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </div>
+        <Dialog open={isAddDialogOpen} onClose={() => setIsAddDialogOpen(false)}>
+          <DialogTitle>Ajouter un étudiant</DialogTitle>
+          <DialogContent>
+            <TextField
+                name="firstname"
+                label="Prénom"
+                value={newStudent.firstname}
+                onChange={handleAddChange}
+                fullWidth
+            />
+            <TextField
+                name="lastname"
+                label="Nom"
+                value={newStudent.lastname}
+                onChange={handleAddChange}
+                fullWidth
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleAddStudent} color="primary">
+              Ajouter
+            </Button>
+            <Button onClick={() => setIsAddDialogOpen(false)} color="secondary">
+              Annuler
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </div>
   );
 }
 
